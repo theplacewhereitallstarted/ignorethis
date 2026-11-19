@@ -1,601 +1,688 @@
 local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
+local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
-
-local LP = Players.LocalPlayer
-local Cam = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
 
 -- Cleanup
-for _, c in {
-	_G.HitboxAddedConn,
-	_G.HitboxKeybind,
-	_G.NPCTargetRenderConn,
-	_G.NPCTargetDiedConn
-} do
-	if c then c:Disconnect() end
-end
+if _G.HitboxAddedConn then _G.HitboxAddedConn:Disconnect() _G.HitboxAddedConn=nil end
+if _G.HitboxKeybind then _G.HitboxKeybind:Disconnect() _G.HitboxKeybind=nil end
+if _G.TargetConn then _G.TargetConn:Disconnect() _G.TargetConn=nil end
+if _G.HitboxGUI then _G.HitboxGUI:Destroy() _G.HitboxGUI=nil end
 
-if _G.HitboxGUI then
-	_G.HitboxGUI:Destroy()
-end
-
-for _, v in workspace:GetDescendants() do
-	if v:IsA("BillboardGui") and
-		(v.Name == "CustomNPCHealthESP" or v.Name == "NPCTargetMarker") then
-		v:Destroy()
-	end
+for _,obj in ipairs(workspace:GetDescendants()) do
+    if obj:IsA("BillboardGui") and
+       (obj.Name=="CustomNPCHealthESP" or obj.Name=="NPCTargetMarker") then
+        obj:Destroy()
+    end
 end
 
 -- Config
 _G.MenuConfig = {
-	HitboxEnabled = false,
-	HitboxSize = 22,
-	HitboxTransparency = 0.92,
-
-	HealthESPEnabled = false,
-
-	NPCTargetEnabled = false,
-	NPCTargetMaxDistance = 1000,
-	NPCTargetHold = true
+    HitboxEnabled = false,
+    HitboxSize = 22,
+    HitboxTransparency = 0.92,
+    HealthESPEnabled = false,
+    TargetEnabled = false,
+    TargetMaxDistance = 1000
 }
 
-local original = setmetatable({}, {__mode = "k"})
-local target
+local originalData = setmetatable({}, {__mode="k"})
+local currentTarget
 
--- NPC check
-local function validNPC(m)
-	if not m or not m:IsA("Model") then return false end
+-- ==========================================
+-- NPC
+-- ==========================================
 
-	local hum = m:FindFirstChildOfClass("Humanoid")
-	local head = m:FindFirstChild("Head")
+local function isValidNPC(model)
+    if not model or not model:IsA("Model") then return false end
 
-	return hum and head
-		and not Players:GetPlayerFromCharacter(m)
-		and hum.Health > 0
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    local head = model:FindFirstChild("Head")
+
+    if not humanoid or not head then return false end
+    if Players:GetPlayerFromCharacter(model) then return false end
+    if humanoid.Health <= 0 then return false end
+
+    return true
 end
 
--- Hitbox
-local function hitbox(m, on)
-	local head = m:FindFirstChild("Head")
-	if not head then return end
+-- ==========================================
+-- HITBOX
+-- ==========================================
 
-	if on then
-		if not validNPC(m) then return end
+local function applyHitbox(model, enable)
+    local head = model:FindFirstChild("Head")
+    if not head then return end
 
-		if not original[head] then
-			original[head] = {
-				Size = head.Size,
-				Material = head.Material,
-				Color = head.BrickColor,
-				Transparency = head.Transparency
-			}
-		end
+    if enable then
+        if not isValidNPC(model) then return end
 
-		local s = _G.MenuConfig.HitboxSize
+        if not originalData[head] then
+            originalData[head] = {
+                Size = head.Size,
+                Material = head.Material,
+                BrickColor = head.BrickColor,
+                Transparency = head.Transparency
+            }
+        end
 
-		head.Size = Vector3.new(s, s, s)
-		head.Transparency = _G.MenuConfig.HitboxTransparency
-		head.Material = Enum.Material.Neon
-		head.BrickColor = BrickColor.new("Really blue")
-		head.CanCollide = false
-		head.Massless = true
-	else
-		local d = original[head]
+        local s = _G.MenuConfig.HitboxSize
 
-		if d then
-			head.Size = d.Size
-			head.Material = d.Material
-			head.BrickColor = d.Color
-			head.Transparency = d.Transparency
-			original[head] = nil
-		end
-	end
+        head.Size = Vector3.new(s,s,s)
+        head.Transparency = _G.MenuConfig.HitboxTransparency
+        head.Material = Enum.Material.Neon
+        head.BrickColor = BrickColor.new("Really blue")
+        head.CanCollide = false
+        head.Massless = true
+    else
+        local saved = originalData[head]
+
+        if saved then
+            head.Size = saved.Size
+            head.Material = saved.Material
+            head.BrickColor = saved.BrickColor
+            head.Transparency = saved.Transparency
+            originalData[head] = nil
+        end
+    end
 end
 
 _G.UpdateHitbox = function()
-	for _, v in workspace:GetDescendants() do
-		if v:IsA("Humanoid") and v.Parent then
-			hitbox(v.Parent, _G.MenuConfig.HitboxEnabled)
-		end
-	end
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Humanoid") and obj.Parent then
+            applyHitbox(obj.Parent,_G.MenuConfig.HitboxEnabled)
+        end
+    end
 end
 
--- Health ESP
-local function healthESP(m, on)
-	local head = m:FindFirstChild("Head")
-	local hum = m:FindFirstChildOfClass("Humanoid")
+-- ==========================================
+-- HEALTH ESP
+-- ==========================================
 
-	if not head or not hum then return end
+local function applyHealthESP(model,enable)
+    local head = model:FindFirstChild("Head")
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
 
-	local old = head:FindFirstChild("CustomNPCHealthESP")
+    if not head or not humanoid then return end
 
-	if not on then
-		if old then old:Destroy() end
-		return
-	end
+    local existingGui = head:FindFirstChild("CustomNPCHealthESP")
 
-	if not validNPC(m) or old then return end
+    if enable then
+        if not isValidNPC(model) or existingGui then return end
 
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "CustomNPCHealthESP"
-	gui.Adornee = head
-	gui.Size = UDim2.fromOffset(90, 26)
-	gui.StudsOffset = Vector3.new(0, 4.5, 0)
-	gui.AlwaysOnTop = true
-	gui.MaxDistance = math.huge
-	gui.Parent = head
+        local bGui = Instance.new("BillboardGui")
+        bGui.Name = "CustomNPCHealthESP"
+        bGui.Adornee = head
+        bGui.Size = UDim2.new(0,90,0,26)
 
-	local name = Instance.new("TextLabel")
-	name.Size = UDim2.new(1, 0, .5, 0)
-	name.BackgroundTransparency = 1
-	name.Text = m.Name
-	name.TextColor3 = Color3.new(1, 1, 1)
-	name.TextStrokeTransparency = .3
-	name.Font = Enum.Font.GothamBold
-	name.TextSize = 11
-	name.Parent = gui
+        -- Đẩy lên cao hơn để tránh thanh máu mặc định
+        bGui.StudsOffset = Vector3.new(0,4.5,0)
 
-	local bg = Instance.new("Frame")
-	bg.Size = UDim2.new(1, 0, .45, 0)
-	bg.Position = UDim2.new(0, 0, .55, 0)
-	bg.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
-	bg.BorderSizePixel = 1
-	bg.Parent = gui
+        bGui.AlwaysOnTop = true
+        bGui.MaxDistance = math.huge
+        bGui.Parent = head
 
-	local fill = Instance.new("Frame")
-	fill.Size = UDim2.fromScale(1, 1)
-	fill.BorderSizePixel = 0
-	fill.Parent = bg
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1,0,0.5,0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Text = model.Name
+        nameLabel.TextColor3 = Color3.fromRGB(255,255,255)
+        nameLabel.TextStrokeTransparency = 0.3
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.TextSize = 11
+        nameLabel.Parent = bGui
 
-	local hp = Instance.new("TextLabel")
-	hp.Size = UDim2.fromScale(1, 1)
-	hp.BackgroundTransparency = 1
-	hp.TextColor3 = Color3.new(1, 1, 1)
-	hp.TextStrokeTransparency = .4
-	hp.Font = Enum.Font.GothamBold
-	hp.TextSize = 10
-	hp.ZIndex = 2
-	hp.Parent = bg
+        local barBg = Instance.new("Frame")
+        barBg.Size = UDim2.new(1,0,0.45,0)
+        barBg.Position = UDim2.new(0,0,0.55,0)
+        barBg.BackgroundColor3 = Color3.fromRGB(35,35,40)
+        barBg.BorderSizePixel = 1
+        barBg.BorderColor3 = Color3.fromRGB(0,0,0)
+        barBg.Parent = bGui
 
-	local function update()
-		if not gui.Parent then return end
+        local barFill = Instance.new("Frame")
+        barFill.Size = UDim2.new(1,0,1,0)
+        barFill.BackgroundColor3 = Color3.fromRGB(46,204,113)
+        barFill.BorderSizePixel = 0
+        barFill.Parent = barBg
 
-		local cur = math.max(0, math.floor(hum.Health))
-		local max = math.max(1, math.floor(hum.MaxHealth))
-		local ratio = math.clamp(cur / max, 0, 1)
+        local hpText = Instance.new("TextLabel")
+        hpText.Size = UDim2.new(1,0,1,0)
+        hpText.BackgroundTransparency = 1
+        hpText.TextColor3 = Color3.fromRGB(255,255,255)
+        hpText.TextStrokeTransparency = 0.4
+        hpText.Font = Enum.Font.GothamBold
+        hpText.TextSize = 10
+        hpText.ZIndex = 2
+        hpText.Parent = barBg
 
-		fill.Size = UDim2.fromScale(ratio, 1)
-		hp.Text = cur .. " / " .. max
+        local function updateBar()
+            if not bGui.Parent then return end
 
-		if ratio > .5 then
-			fill.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-		elseif ratio > .25 then
-			fill.BackgroundColor3 = Color3.fromRGB(241, 196, 15)
-		else
-			fill.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
-		end
-	end
+            local hp = math.max(0,math.floor(humanoid.Health))
+            local maxHp = math.max(1,math.floor(humanoid.MaxHealth))
+            local ratio = math.clamp(hp/maxHp,0,1)
 
-	update()
+            barFill.Size = UDim2.new(ratio,0,1,0)
+            hpText.Text = hp.." / "..maxHp
 
-	local conn = hum.HealthChanged:Connect(update)
+            if ratio > 0.5 then
+                barFill.BackgroundColor3 = Color3.fromRGB(46,204,113)
+            elseif ratio > 0.25 then
+                barFill.BackgroundColor3 = Color3.fromRGB(241,196,15)
+            else
+                barFill.BackgroundColor3 = Color3.fromRGB(231,76,60)
+            end
+        end
 
-	hum.Died:Once(function()
-		conn:Disconnect()
-		if gui then gui:Destroy() end
-	end)
+        updateBar()
+
+        local healthConn = humanoid.HealthChanged:Connect(updateBar)
+
+        humanoid.Died:Once(function()
+            if healthConn then healthConn:Disconnect() end
+            if bGui then bGui:Destroy() end
+        end)
+
+    elseif existingGui then
+        existingGui:Destroy()
+    end
 end
 
 _G.UpdateHealthESP = function()
-	for _, v in workspace:GetDescendants() do
-		if v:IsA("Humanoid") and v.Parent then
-			healthESP(v.Parent, _G.MenuConfig.HealthESPEnabled)
-		end
-	end
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Humanoid") and obj.Parent then
+            applyHealthESP(
+                obj.Parent,
+                _G.MenuConfig.HealthESPEnabled
+            )
+        end
+    end
 end
 
--- Target
-local function removeMarker(m)
-	local h = m and m:FindFirstChild("Head")
-	if not h then return end
+-- ==========================================
+-- NPC TARGET
+-- ==========================================
 
-	local x = h:FindFirstChild("NPCTargetMarker")
-	if x then x:Destroy() end
+local function removeTargetMarker()
+    if currentTarget then
+        local head = currentTarget:FindFirstChild("Head")
+
+        if head then
+            local marker = head:FindFirstChild("NPCTargetMarker")
+            if marker then
+                marker:Destroy()
+            end
+        end
+    end
 end
 
 local function clearTarget()
-	removeMarker(target)
-	target = nil
-
-	if _G.NPCTargetDiedConn then
-		_G.NPCTargetDiedConn:Disconnect()
-		_G.NPCTargetDiedConn = nil
-	end
+    removeTargetMarker()
+    currentTarget = nil
 end
 
-local function screenPos(head)
-	local p, visible = Cam:WorldToViewportPoint(head.Position)
+local function addTargetMarker(model)
+    local head = model:FindFirstChild("Head")
+    if not head then return end
 
-	if not visible or p.Z <= 0 then
-		return
-	end
+    if head:FindFirstChild("NPCTargetMarker") then return end
 
-	return Vector2.new(p.X, p.Y)
+    local gui = Instance.new("BillboardGui")
+    gui.Name = "NPCTargetMarker"
+    gui.Adornee = head
+    gui.Size = UDim2.new(0,80,0,22)
+    gui.StudsOffset = Vector3.new(0,3.5,0)
+    gui.AlwaysOnTop = true
+    gui.Parent = head
+
+    local text = Instance.new("TextLabel")
+    text.Size = UDim2.fromScale(1,1)
+    text.BackgroundTransparency = 1
+    text.Text = "TARGET"
+    text.TextColor3 = Color3.fromRGB(255,80,80)
+    text.TextStrokeTransparency = 0.2
+    text.Font = Enum.Font.GothamBold
+    text.TextSize = 12
+    text.Parent = gui
 end
 
-local function inRange(head)
-	local char = LP.Character
-	local root = char and char:FindFirstChild("HumanoidRootPart")
+local function isTargetVisible(model)
+    if not isValidNPC(model) then return false end
 
-	if not root then return false end
+    local head = model:FindFirstChild("Head")
+    local camera = workspace.CurrentCamera
 
-	return (head.Position - root.Position).Magnitude
-		<= _G.MenuConfig.NPCTargetMaxDistance
-end
+    if not head or not camera then return false end
 
-local function addMarker(m)
-	local head = m:FindFirstChild("Head")
-	if not head then return end
+    local pos,onScreen = camera:WorldToViewportPoint(head.Position)
 
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "NPCTargetMarker"
-	gui.Adornee = head
-	gui.Size = UDim2.fromOffset(55, 55)
-	gui.AlwaysOnTop = true
-	gui.Parent = head
+    if not onScreen or pos.Z <= 0 then
+        return false
+    end
 
-	local circle = Instance.new("Frame")
-	circle.Size = UDim2.fromScale(1, 1)
-	circle.BackgroundTransparency = 1
-	circle.BorderSizePixel = 2
-	circle.BorderColor3 = Color3.fromRGB(255, 170, 0)
-	circle.Parent = gui
+    local distance =
+        (head.Position-camera.CFrame.Position).Magnitude
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(1, 0)
-	corner.Parent = circle
-
-	local text = Instance.new("TextLabel")
-	text.Size = UDim2.new(1, 0, 0, 18)
-	text.Position = UDim2.new(0, 0, 1, 2)
-	text.BackgroundTransparency = 1
-	text.Text = "TARGET"
-	text.TextColor3 = Color3.fromRGB(255, 170, 0)
-	text.TextStrokeTransparency = .25
-	text.Font = Enum.Font.GothamBold
-	text.TextSize = 10
-	text.Parent = gui
+    return distance <= _G.MenuConfig.TargetMaxDistance
 end
 
 local function findTarget()
-	local center = Cam.ViewportSize / 2
-	local best, bestDist = nil, math.huge
+    local camera = workspace.CurrentCamera
+    if not camera then return nil end
 
-	for _, v in workspace:GetDescendants() do
-		if v:IsA("Humanoid") and v.Parent then
-			local m = v.Parent
+    local viewport = camera.ViewportSize
+    local center = Vector2.new(
+        viewport.X/2,
+        viewport.Y/2
+    )
 
-			if validNPC(m) then
-				local h = m:FindFirstChild("Head")
+    local best
+    local bestDistance = math.huge
 
-				if h and inRange(h) then
-					local p = screenPos(h)
+    for _,obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Humanoid") and obj.Parent then
+            local model = obj.Parent
 
-					if p then
-						local d = (p - center).Magnitude
+            if isValidNPC(model) then
+                local head = model:FindFirstChild("Head")
 
-						if d < bestDist then
-							bestDist = d
-							best = m
-						end
-					end
-				end
-			end
-		end
-	end
+                if head then
+                    local pos,onScreen =
+                        camera:WorldToViewportPoint(head.Position)
 
-	return best
+                    if onScreen and pos.Z > 0 then
+                        local worldDistance =
+                            (head.Position-camera.CFrame.Position).Magnitude
+
+                        if worldDistance <=
+                           _G.MenuConfig.TargetMaxDistance then
+
+                            local screenDistance =
+                                (Vector2.new(pos.X,pos.Y)-center).Magnitude
+
+                            if screenDistance < bestDistance then
+                                best = model
+                                bestDistance = screenDistance
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return best
 end
 
-local function targetValid()
-	if not target or not validNPC(target) then
-		return false
-	end
+_G.UpdateTarget = function()
+    if not _G.MenuConfig.TargetEnabled then
+        clearTarget()
+        return
+    end
 
-	local h = target:FindFirstChild("Head")
+    if currentTarget and isTargetVisible(currentTarget) then
+        addTargetMarker(currentTarget)
+        return
+    end
 
-	return h
-		and inRange(h)
-		and screenPos(h) ~= nil
+    clearTarget()
+
+    local newTarget = findTarget()
+
+    if newTarget then
+        currentTarget = newTarget
+        addTargetMarker(currentTarget)
+    end
 end
 
-local function updateTarget()
-	if not _G.MenuConfig.NPCTargetEnabled then
-		if target then clearTarget() end
-		return
-	end
+-- ==========================================
+-- NPC MỚI
+-- ==========================================
 
-	if _G.MenuConfig.NPCTargetHold and targetValid() then
-		return
-	end
-
-	clearTarget()
-
-	local newTarget = findTarget()
-	if not newTarget then return end
-
-	target = newTarget
-	addMarker(target)
-
-	local hum = target:FindFirstChildOfClass("Humanoid")
-
-	if hum then
-		_G.NPCTargetDiedConn =
-			hum.Died:Once(clearTarget)
-	end
-end
-
-_G.NPCTargetRenderConn =
-	RunService.RenderStepped:Connect(updateTarget)
-
--- New NPCs
 _G.HitboxAddedConn =
-	workspace.DescendantAdded:Connect(function(v)
-		if not v:IsA("Humanoid") then return end
+workspace.DescendantAdded:Connect(function(descendant)
 
-		local m = v.Parent
-		if not m then return end
+    if not descendant:IsA("Humanoid") then return end
 
-		local head = m:WaitForChild("Head", 3)
-		if not head then return end
+    local npcModel = descendant.Parent
+    if not npcModel then return end
 
-		if _G.MenuConfig.HitboxEnabled then
-			hitbox(m, true)
-		end
+    local head = npcModel:WaitForChild("Head",3)
+    if not head then return end
 
-		if _G.MenuConfig.HealthESPEnabled then
-			healthESP(m, true)
-		end
+    if _G.MenuConfig.HitboxEnabled then
+        applyHitbox(npcModel,true)
+    end
 
-		v.Died:Once(function()
-			hitbox(m, false)
-			healthESP(m, false)
+    if _G.MenuConfig.HealthESPEnabled then
+        applyHealthESP(npcModel,true)
+    end
 
-			if target == m then
-				clearTarget()
-			end
-		end)
-	end)
+    descendant.Died:Once(function()
+        applyHitbox(npcModel,false)
+        applyHealthESP(npcModel,false)
 
+        if currentTarget == npcModel then
+            clearTarget()
+        end
+    end)
+end)
+
+-- ==========================================
 -- GUI
-local gui = Instance.new("ScreenGui")
-gui.Name = "ControlPanelGUI"
-gui.ResetOnSpawn = false
-gui.Parent = LP:WaitForChild("PlayerGui")
-_G.HitboxGUI = gui
+-- ==========================================
 
-local main = Instance.new("Frame")
-main.Size = UDim2.fromOffset(230, 285)
-main.Position = UDim2.fromOffset(20, 20)
-main.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-main.BorderSizePixel = 0
-main.Active = true
-main.Draggable = true
-main.Parent = gui
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ControlPanelGUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+_G.HitboxGUI = ScreenGui
 
-local mainCorner = Instance.new("UICorner")
-mainCorner.CornerRadius = UDim.new(0, 8)
-mainCorner.Parent = main
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0,230,0,215)
+MainFrame.Position = UDim2.new(0,20,0,20)
+MainFrame.BackgroundColor3 = Color3.fromRGB(30,30,35)
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
 
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, 0, 0, 28)
-title.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
-title.Text = "  Control Menu [RCtrl]"
-title.TextColor3 = Color3.new(1, 1, 1)
-title.Font = Enum.Font.GothamBold
-title.TextSize = 12
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = main
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0,8)
+UICorner.Parent = MainFrame
 
-local min = Instance.new("TextButton")
-min.Size = UDim2.fromOffset(24, 22)
-min.Position = UDim2.new(1, -27, 0, 3)
-min.BackgroundColor3 = Color3.fromRGB(70, 70, 85)
-min.Text = "-"
-min.TextColor3 = Color3.new(1, 1, 1)
-min.Font = Enum.Font.GothamBold
-min.TextSize = 16
-min.Parent = title
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1,0,0,28)
+Title.BackgroundColor3 = Color3.fromRGB(45,45,55)
+Title.Text = "  Control Menu [RCtrl: Ẩn]"
+Title.TextColor3 = Color3.fromRGB(255,255,255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 12
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = MainFrame
 
-local minimized = false
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0,8)
+TitleCorner.Parent = Title
 
-min.MouseButton1Click:Connect(function()
-	minimized = not minimized
-	main.Size = minimized
-		and UDim2.fromOffset(230, 28)
-		or UDim2.fromOffset(230, 285)
-	min.Text = minimized and "+" or "-"
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0,24,0,22)
+MinimizeBtn.Position = UDim2.new(1,-27,0,3)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(70,70,85)
+MinimizeBtn.Text = "-"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255,255,255)
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.TextSize = 16
+MinimizeBtn.Parent = Title
+
+local MinCorner = Instance.new("UICorner")
+MinCorner.CornerRadius = UDim.new(0,5)
+MinCorner.Parent = MinimizeBtn
+
+local isMinimized = false
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+
+    MainFrame.Size =
+        isMinimized
+        and UDim2.new(0,230,0,28)
+        or UDim2.new(0,230,0,215)
+
+    MinimizeBtn.Text =
+        isMinimized and "+" or "-"
 end)
 
-local scroll = Instance.new("ScrollingFrame")
-scroll.Size = UDim2.new(1, -10, 1, -36)
-scroll.Position = UDim2.fromOffset(5, 32)
-scroll.BackgroundTransparency = 1
-scroll.BorderSizePixel = 0
-scroll.ScrollBarThickness = 4
-scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scroll.Parent = main
+local ScrollContainer = Instance.new("ScrollingFrame")
+ScrollContainer.Size = UDim2.new(1,-10,1,-36)
+ScrollContainer.Position = UDim2.new(0,5,0,32)
+ScrollContainer.BackgroundTransparency = 1
+ScrollContainer.BorderSizePixel = 0
+ScrollContainer.ScrollBarThickness = 4
+ScrollContainer.ScrollBarImageColor3 =
+    Color3.fromRGB(100,100,120)
+ScrollContainer.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ScrollContainer.CanvasSize = UDim2.new(0,0,0,0)
+ScrollContainer.Parent = MainFrame
 
-local layout = Instance.new("UIListLayout")
-layout.Padding = UDim.new(0, 6)
-layout.Parent = scroll
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0,6)
+ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+ListLayout.Parent = ScrollContainer
 
-local function section(t)
-	local x = Instance.new("TextLabel")
-	x.Size = UDim2.new(1, -6, 0, 20)
-	x.BackgroundTransparency = 1
-	x.Text = "-- " .. t .. " --"
-	x.TextColor3 = Color3.fromRGB(150, 180, 255)
-	x.Font = Enum.Font.GothamBold
-	x.TextSize = 11
-	x.Parent = scroll
+-- ==========================================
+-- GUI HELPERS
+-- ==========================================
+
+local function addSectionTitle(text)
+    local Sec = Instance.new("TextLabel")
+
+    Sec.Size = UDim2.new(1,-6,0,20)
+    Sec.BackgroundTransparency = 1
+    Sec.Text = "--- "..text.." ---"
+    Sec.TextColor3 = Color3.fromRGB(150,180,255)
+    Sec.Font = Enum.Font.GothamBold
+    Sec.TextSize = 11
+    Sec.Parent = ScrollContainer
 end
 
-local function toggle(text, default, callback)
-	local state = default
+local function addToggle(text,defaultState,callback)
+    local state = defaultState
 
-	local b = Instance.new("TextButton")
-	b.Size = UDim2.new(1, -6, 0, 28)
-	b.Font = Enum.Font.GothamBold
-	b.TextSize = 12
-	b.TextColor3 = Color3.new(1, 1, 1)
-	b.Parent = scroll
+    local Btn = Instance.new("TextButton")
+    Btn.Size = UDim2.new(1,-6,0,28)
+    Btn.BackgroundColor3 =
+        state
+        and Color3.fromRGB(46,204,113)
+        or Color3.fromRGB(231,76,60)
 
-	local function update(v)
-		state = v
-		b.BackgroundColor3 =
-			v and Color3.fromRGB(46, 204, 113)
-			or Color3.fromRGB(231, 76, 60)
-		b.Text = text .. (v and ": ON" or ": OFF")
-	end
+    Btn.Text =
+        text..(state and ": BẬT" or ": TẮT")
 
-	update(state)
+    Btn.TextColor3 = Color3.fromRGB(255,255,255)
+    Btn.Font = Enum.Font.GothamBold
+    Btn.TextSize = 12
+    Btn.Parent = ScrollContainer
 
-	b.MouseButton1Click:Connect(function()
-		update(not state)
-		callback(state)
-	end)
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0,6)
+    Corner.Parent = Btn
 
-	return update
+    local function updateVisual(newState)
+        state = newState
+
+        Btn.BackgroundColor3 =
+            state
+            and Color3.fromRGB(46,204,113)
+            or Color3.fromRGB(231,76,60)
+
+        Btn.Text =
+            text..(state and ": BẬT" or ": TẮT")
+    end
+
+    Btn.MouseButton1Click:Connect(function()
+        updateVisual(not state)
+        callback(state)
+    end)
+
+    return updateVisual
 end
 
-local function input(label, value, callback)
-	local row = Instance.new("Frame")
-	row.Size = UDim2.new(1, -6, 0, 26)
-	row.BackgroundTransparency = 1
-	row.Parent = scroll
+local function addInput(labelText,defaultValue,callback)
+    local Row = Instance.new("Frame")
 
-	local l = Instance.new("TextLabel")
-	l.Size = UDim2.new(.6, 0, 1, 0)
-	l.BackgroundTransparency = 1
-	l.Text = " " .. label
-	l.TextColor3 = Color3.fromRGB(220, 220, 220)
-	l.Font = Enum.Font.Gotham
-	l.TextSize = 12
-	l.TextXAlignment = Enum.TextXAlignment.Left
-	l.Parent = row
+    Row.Size = UDim2.new(1,-6,0,26)
+    Row.BackgroundTransparency = 1
+    Row.Parent = ScrollContainer
 
-	local box = Instance.new("TextBox")
-	box.Size = UDim2.new(.38, 0, 1, 0)
-	box.Position = UDim2.new(.62, 0, 0, 0)
-	box.BackgroundColor3 = Color3.fromRGB(50, 50, 60)
-	box.Text = tostring(value)
-	box.TextColor3 = Color3.new(1, 1, 1)
-	box.Font = Enum.Font.GothamBold
-	box.TextSize = 12
-	box.ClearTextOnFocus = false
-	box.Parent = row
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.6,0,1,0)
+    Label.BackgroundTransparency = 1
+    Label.Text = " "..labelText
+    Label.TextColor3 = Color3.fromRGB(220,220,220)
+    Label.Font = Enum.Font.Gotham
+    Label.TextSize = 12
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = Row
 
-	box.FocusLost:Connect(function()
-		local n = tonumber(box.Text)
+    local Box = Instance.new("TextBox")
+    Box.Size = UDim2.new(0.38,0,1,0)
+    Box.Position = UDim2.new(0.62,0,0,0)
+    Box.BackgroundColor3 = Color3.fromRGB(50,50,60)
+    Box.Text = tostring(defaultValue)
+    Box.TextColor3 = Color3.fromRGB(255,255,255)
+    Box.Font = Enum.Font.GothamBold
+    Box.TextSize = 12
+    Box.ClearTextOnFocus = false
+    Box.Parent = Row
 
-		if n then
-			callback(n)
-			box.Text = tostring(n)
-		else
-			box.Text = tostring(value)
-		end
-	end)
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0,4)
+    Corner.Parent = Box
+
+    Box.FocusLost:Connect(function()
+        local num = tonumber(Box.Text)
+
+        if num then
+            callback(num)
+            Box.Text = tostring(num)
+        else
+            Box.Text = tostring(defaultValue)
+        end
+    end)
 end
 
--- Settings
-section("HITBOX")
+-- ==========================================
+-- GẮN CHỨC NĂNG
+-- ==========================================
 
-local hitboxBtn = toggle(
-	"Hitbox [Numpad 0]",
-	_G.MenuConfig.HitboxEnabled,
-	function(v)
-		_G.MenuConfig.HitboxEnabled = v
-		_G.UpdateHitbox()
-	end
+addSectionTitle("CÀI ĐẶT HITBOX")
+
+local setHitboxBtnVisual =
+addToggle(
+    "Hitbox (Numpad 0)",
+    _G.MenuConfig.HitboxEnabled,
+    function(state)
+        _G.MenuConfig.HitboxEnabled = state
+        _G.UpdateHitbox()
+    end
 )
 
-input("Size:", _G.MenuConfig.HitboxSize, function(v)
-	_G.MenuConfig.HitboxSize = math.max(1, v)
-
-	if _G.MenuConfig.HitboxEnabled then
-		_G.UpdateHitbox()
-	end
-end)
-
-input("Transparency:", _G.MenuConfig.HitboxTransparency, function(v)
-	_G.MenuConfig.HitboxTransparency = math.clamp(v, 0, 1)
-
-	if _G.MenuConfig.HitboxEnabled then
-		_G.UpdateHitbox()
-	end
-end)
-
-section("ESP")
-
-toggle(
-	"NPC Health",
-	_G.MenuConfig.HealthESPEnabled,
-	function(v)
-		_G.MenuConfig.HealthESPEnabled = v
-		_G.UpdateHealthESP()
-	end
+addInput(
+    "Kích thước (Size):",
+    _G.MenuConfig.HitboxSize,
+    function(val)
+        _G.MenuConfig.HitboxSize = math.max(1,val)
+        _G.UpdateHitbox()
+    end
 )
 
-section("TARGET")
+addInput(
+    "Độ mờ (0 - 1):",
+    _G.MenuConfig.HitboxTransparency,
+    function(val)
+        _G.MenuConfig.HitboxTransparency =
+            math.clamp(val,0,1)
 
-local targetBtn = toggle(
-	"NPC Head Target [T]",
-	_G.MenuConfig.NPCTargetEnabled,
-	function(v)
-		_G.MenuConfig.NPCTargetEnabled = v
-
-		if not v then
-			clearTarget()
-		end
-	end
+        _G.UpdateHitbox()
+    end
 )
 
-input(
-	"Max Distance:",
-	_G.MenuConfig.NPCTargetMaxDistance,
-	function(v)
-		_G.MenuConfig.NPCTargetMaxDistance =
-			math.max(1, v)
-	end
+addSectionTitle("HIỂN THỊ (ESP)")
+
+addToggle(
+    "Thanh máu NPC",
+    _G.MenuConfig.HealthESPEnabled,
+    function(state)
+        _G.MenuConfig.HealthESPEnabled = state
+        _G.UpdateHealthESP()
+    end
 )
 
--- Hotkeys
+addSectionTitle("NPC TARGET")
+
+addToggle(
+    "NPC Head Target (T)",
+    _G.MenuConfig.TargetEnabled,
+    function(state)
+        _G.MenuConfig.TargetEnabled = state
+
+        if not state then
+            clearTarget()
+        else
+            _G.UpdateTarget()
+        end
+    end
+)
+
+addInput(
+    "Khoảng cách Target:",
+    _G.MenuConfig.TargetMaxDistance,
+    function(val)
+        _G.MenuConfig.TargetMaxDistance =
+            math.max(1,val)
+
+        _G.UpdateTarget()
+    end
+)
+
+-- ==========================================
+-- HOTKEY
+-- ==========================================
+
 _G.HitboxKeybind =
-	UIS.InputBegan:Connect(function(input, processed)
-		if processed then return end
+UserInputService.InputBegan:Connect(function(input,gameProcessed)
 
-		if input.KeyCode == Enum.KeyCode.KeypadZero then
-			_G.MenuConfig.HitboxEnabled =
-				not _G.MenuConfig.HitboxEnabled
+    if gameProcessed then return end
 
-			hitboxBtn(_G.MenuConfig.HitboxEnabled)
-			_G.UpdateHitbox()
+    if input.KeyCode == Enum.KeyCode.KeypadZero then
 
-		elseif input.KeyCode == Enum.KeyCode.T then
-			_G.MenuConfig.NPCTargetEnabled =
-				not _G.MenuConfig.NPCTargetEnabled
+        _G.MenuConfig.HitboxEnabled =
+            not _G.MenuConfig.HitboxEnabled
 
-			targetBtn(_G.MenuConfig.NPCTargetEnabled)
+        setHitboxBtnVisual(
+            _G.MenuConfig.HitboxEnabled
+        )
 
-			if not _G.MenuConfig.NPCTargetEnabled then
-				clearTarget()
-			end
+        _G.UpdateHitbox()
 
-		elseif input.KeyCode == Enum.KeyCode.RightControl then
-			main.Visible = not main.Visible
-		end
-	end)
+    elseif input.KeyCode == Enum.KeyCode.T then
 
--- All features start OFF.
-```
+        _G.MenuConfig.TargetEnabled =
+            not _G.MenuConfig.TargetEnabled
+
+        if not _G.MenuConfig.TargetEnabled then
+            clearTarget()
+        else
+            _G.UpdateTarget()
+        end
+
+    elseif input.KeyCode == Enum.KeyCode.RightControl then
+
+        MainFrame.Visible =
+            not MainFrame.Visible
+
+    end
+end)
+
+-- ==========================================
+-- TARGET UPDATE
+-- ==========================================
+
+_G.TargetConn =
+RunService.RenderStepped:Connect(function()
+
+    if _G.MenuConfig.TargetEnabled then
+        _G.UpdateTarget()
+    elseif currentTarget then
+        clearTarget()
+    end
+
+end)
+
+-- Initial state
+_G.UpdateHitbox()
+_G.UpdateHealthESP()
+_G.UpdateTarget()
