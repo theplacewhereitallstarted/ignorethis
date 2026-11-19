@@ -21,11 +21,10 @@ local HEAD_SIZE = Vector3.new(currentSizeValue, currentSizeValue, currentSizeVal
 -- Bảng lưu dữ liệu (Weak Table tự động giải phóng RAM)
 local originalData = setmetatable({}, { __mode = "k" })
 local espObjects = setmetatable({}, { __mode = "k" })
-local npcLabels = {}
 
--- ================= TẠO GUI KHUNG CUỘN =================
+-- ================= TẠO GUI GỌN NHẸ =================
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "NPCHitboxScrollGUI"
+screenGui.Name = "NPCHitboxCompactGUI"
 screenGui.ResetOnSpawn = false
 pcall(function() screenGui.Parent = CoreGui end)
 if not screenGui.Parent then
@@ -33,11 +32,11 @@ if not screenGui.Parent then
 end
 _G.HitboxGui = screenGui
 
--- Khung chính
+-- Khung chính (Tự động co gọn vì đã bỏ killfeed)
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
-mainFrame.Size = UDim2.new(0, 230, 0, 400)
-mainFrame.Position = UDim2.new(1, -245, 0.5, -200)
+mainFrame.Size = UDim2.new(0, 260, 0, 142)
+mainFrame.Position = UDim2.new(1, -275, 0.5, -71)
 mainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 mainFrame.BorderSizePixel = 0
 mainFrame.Active = true
@@ -48,11 +47,11 @@ local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
--- Hàm hỗ trợ tạo nút bật/tắt nhanh
-local function createToggleButton(name, text, posY)
+-- Hàm hỗ trợ tạo nút bật/tắt (có tùy chọn chừa chỗ cho ô nhập bên phải)
+local function createToggleButton(name, text, posY, hasInputRight)
 	local btn = Instance.new("TextButton")
 	btn.Name = name
-	btn.Size = UDim2.new(1, -16, 0, 30)
+	btn.Size = hasInputRight and UDim2.new(1, -74, 0, 32) or UDim2.new(1, -16, 0, 32)
 	btn.Position = UDim2.new(0, 8, 0, posY)
 	btn.BackgroundColor3 = Color3.fromRGB(180, 50, 50) -- Mặc định đỏ (TẮT)
 	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -67,100 +66,47 @@ local function createToggleButton(name, text, posY)
 	return btn
 end
 
--- Hàm hỗ trợ tạo hàng nhập số (Label + TextBox)
-local function createInputRow(labelText, defaultVal, posY)
-	local lbl = Instance.new("TextLabel")
-	lbl.Size = UDim2.new(0.58, -8, 0, 28)
-	lbl.Position = UDim2.new(0, 8, 0, posY)
-	lbl.BackgroundTransparency = 1
-	lbl.TextColor3 = Color3.fromRGB(200, 200, 210)
-	lbl.Font = Enum.Font.GothamSemibold
-	lbl.TextSize = 12
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.Text = labelText
-	lbl.Parent = mainFrame
-
+-- Hàm hỗ trợ tạo ô nhập liệu nằm bên phải nút toggle
+local function createRightInput(defaultVal, posY, placeholder)
 	local box = Instance.new("TextBox")
-	box.Size = UDim2.new(0.42, -8, 0, 28)
-	box.Position = UDim2.new(0.58, 0, 0, posY)
+	box.Size = UDim2.new(0, 52, 0, 32)
+	box.Position = UDim2.new(1, -60, 0, posY)
 	box.BackgroundColor3 = Color3.fromRGB(38, 38, 46)
 	box.TextColor3 = Color3.fromRGB(255, 255, 255)
-	box.PlaceholderText = "Nhập số..."
+	box.PlaceholderText = placeholder
 	box.Text = tostring(defaultVal)
 	box.Font = Enum.Font.GothamBold
-	box.TextSize = 13
+	box.TextSize = 12
 	box.ClearTextOnFocus = false
 	box.Parent = mainFrame
 
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 6)
 	corner.Parent = box
-
 	return box
 end
 
--- Các nút chức năng
-local hitboxBtn = createToggleButton("HitboxBtn", "Hitbox NPC: TẮT [Num 0]", 8)
-local espBtn = createToggleButton("EspBtn", "ESP NPC: TẮT", 44)
-local interactBtn = createToggleButton("InteractBtn", "Tự động tương tác: TẮT", 80)
+-- Hàng 1: Hitbox NPC + Ô nhập kích thước đầu bên phải
+local hitboxBtn = createToggleButton("HitboxBtn", "Hitbox NPC: TẮT [Num 0]", 8, true)
+local sizeInput = createRightInput(currentSizeValue, 8, "Size")
 
--- Các ô nhập thông số tùy chỉnh
-local sizeInput = createInputRow("Kích thước đầu:", currentSizeValue, 116)
-local delayInput = createInputRow("Chờ tương tác (s):", currentInteractDelay, 150)
+-- Hàng 2: ESP NPC (Full chiều ngang)
+local espBtn = createToggleButton("EspBtn", "ESP NPC: TẮT", 46, false)
 
--- Khung cuộn danh sách NPC
-local scrollFrame = Instance.new("ScrollingFrame")
-scrollFrame.Name = "NPCScroll"
-scrollFrame.Size = UDim2.new(1, -16, 1, -192)
-scrollFrame.Position = UDim2.new(0, 8, 0, 184)
-scrollFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
-scrollFrame.BorderSizePixel = 0
-scrollFrame.ScrollBarThickness = 4
-scrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-scrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
-scrollFrame.Parent = mainFrame
+-- Hàng 3: Tự động tương tác + Ô nhập giây bên phải
+local interactBtn = createToggleButton("InteractBtn", "Tự động tương tác: TẮT", 84, true)
+local delayInput = createRightInput(currentInteractDelay, 84, "Giây")
 
-local scrollCorner = Instance.new("UICorner")
-scrollCorner.CornerRadius = UDim.new(0, 6)
-scrollCorner.Parent = scrollFrame
-
-local uiList = Instance.new("UIListLayout")
-uiList.Padding = UDim.new(0, 4)
-uiList.SortOrder = Enum.SortOrder.LayoutOrder
-uiList.Parent = scrollFrame
-
-local uiPadding = Instance.new("UIPadding")
-uiPadding.PaddingTop = UDim.new(0, 4)
-uiPadding.PaddingLeft = UDim.new(0, 6)
-uiPadding.PaddingRight = UDim.new(0, 6)
-uiPadding.Parent = scrollFrame
-
--- Hàm cập nhật mục trong khung cuộn
-local function updateGuiList(model, isAdded)
-	if isAdded then
-		if npcLabels[model] then return end
-		local item = Instance.new("TextLabel")
-		item.Size = UDim2.new(1, 0, 0, 22)
-		item.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
-		item.TextColor3 = Color3.fromRGB(220, 220, 220)
-		item.Font = Enum.Font.Gotham
-		item.TextSize = 12
-		item.TextXAlignment = Enum.TextXAlignment.Left
-		item.Text = "  • " .. model.Name
-		item.Parent = scrollFrame
-
-		local itemCorner = Instance.new("UICorner")
-		itemCorner.CornerRadius = UDim.new(0, 4)
-		itemCorner.Parent = item
-
-		npcLabels[model] = item
-	else
-		if npcLabels[model] then
-			npcLabels[model]:Destroy()
-			npcLabels[model] = nil
-		end
-	end
-end
+-- Dòng ghi chú phím tắt ẩn GUI ở đáy khung
+local hintLabel = Instance.new("TextLabel")
+hintLabel.Size = UDim2.new(1, -16, 0, 16)
+hintLabel.Position = UDim2.new(0, 8, 1, -20)
+hintLabel.BackgroundTransparency = 1
+hintLabel.TextColor3 = Color3.fromRGB(140, 140, 155)
+hintLabel.Font = Enum.Font.Gotham
+hintLabel.TextSize = 10
+hintLabel.Text = "Nhấn [Right Ctrl] để Ẩn / Hiện bảng điều khiển"
+hintLabel.Parent = mainFrame
 -- =======================================================
 
 -- Hàm kiểm tra NPC hợp lệ
@@ -208,7 +154,6 @@ local function applyHitbox(model, enable)
 			head.CanCollide = false
 			head.Massless = true
 		end
-		updateGuiList(model, true)
 	else
 		local saved = originalData[head]
 		if saved then
@@ -220,7 +165,6 @@ local function applyHitbox(model, enable)
 			head.Massless = saved.Massless
 			originalData[head] = nil
 		end
-		updateGuiList(model, false)
 	end
 end
 
@@ -305,46 +249,49 @@ end
 -- ================= CHỨC NĂNG 3: TỰ ĐỘNG TƯƠNG TÁC =================
 _G.AutoInteractLoop = true
 task.spawn(function()
-while _G.AutoInteractLoop do
-if isInteractEnabled then
-local char = LocalPlayer.Character
-local root = char and char:FindFirstChild("HumanoidRootPart")
-if root then
-for _, obj in ipairs(workspace:GetDescendants()) do
-if obj:IsA("ProximityPrompt") and obj.Enabled then
-local parentPart = obj.Parent:IsA("BasePart") and obj.Parent or obj.Parent:FindFirstChildWhichIsA("BasePart")
-if parentPart and (parentPart.Position - root.Position).Magnitude <= (obj.MaxActivationDistance + 5) then
-if fireproximityprompt then
-fireproximityprompt(obj)
-else
-obj:InputHoldBegin()
-task.wait(obj.HoldDuration)
-obj:InputHoldEnd()
-end
-end
-end
-end
-end
-task.wait(currentInteractDelay)
-else
--- Khi đang tắt thì kiểm tra nhẹ mỗi 0.2s để phản hồi nhanh ngay khi bật lại
-task.wait(0.2)
-end
-end
+	while _G.AutoInteractLoop do
+		if isInteractEnabled then
+			local char = LocalPlayer.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if root then
+				for _, obj in ipairs(workspace:GetDescendants()) do
+					if obj:IsA("ProximityPrompt") and obj.Enabled then
+						local parentPart = obj.Parent:IsA("BasePart") and obj.Parent or obj.Parent:FindFirstChildWhichIsA("BasePart")
+						if parentPart and (parentPart.Position - root.Position).Magnitude <= (obj.MaxActivationDistance + 5) then
+							if fireproximityprompt then
+								fireproximityprompt(obj)
+							else
+								obj:InputHoldBegin()
+								task.wait(obj.HoldDuration)
+								obj:InputHoldEnd()
+							end
+						end
+					end
+				end
+			end
+			task.wait(currentInteractDelay)
+		else
+			task.wait(0.2)
+		end
+	end
 end)
+
 local function toggleInteract(state)
-interactBtn.Text = state and "Tự động tương tác: BẬT" or "Tự động tương tác: TẮT"
-interactBtn.BackgroundColor3 = state and Color3.fromRGB(0, 170, 100) or Color3.fromRGB(180, 50, 50)
+	interactBtn.Text = state and "Tự động tương tác: BẬT" or "Tự động tương tác: TẮT"
+	interactBtn.BackgroundColor3 = state and Color3.fromRGB(0, 170, 100) or Color3.fromRGB(180, 50, 50)
 end
+
 -- ================= SỰ KIỆN NÚT BẤM & PHÍM TẮT =================
 hitboxBtn.MouseButton1Click:Connect(function()
-isHitboxEnabled = not isHitboxEnabled
-toggleHitboxAll(isHitboxEnabled)
+	isHitboxEnabled = not isHitboxEnabled
+	toggleHitboxAll(isHitboxEnabled)
 end)
+
 espBtn.MouseButton1Click:Connect(function()
-isEspEnabled = not isEspEnabled
-toggleEspAll(isEspEnabled)
+	isEspEnabled = not isEspEnabled
+	toggleEspAll(isEspEnabled)
 end)
+
 interactBtn.MouseButton1Click:Connect(function()
 isInteractEnabled = not isInteractEnabled
 toggleInteract(isInteractEnabled)
@@ -366,7 +313,6 @@ end)
 delayInput.FocusLost:Connect(function()
 local num = tonumber(delayInput.Text)
 if num and num >= 0.05 then
--- Giới hạn từ 0.05 giây đến 60 giây để tránh treo máy
 num = math.clamp(num, 0.05, 60)
 currentInteractDelay = num
 delayInput.Text = tostring(num)
@@ -387,8 +333,12 @@ if isEspEnabled then applyESP(npcModel, true) end
 end
 end
 end)
--- 3. Gán phím Keypad 0 để bật/tắt Hitbox
+-- 3. Gán phím Keypad 0 (Bật/Tắt Hitbox) và Right Ctrl (Ẩn/Hiện GUI)
 _G.HitboxKeybind = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+if input.KeyCode == Enum.KeyCode.RightControl then
+mainFrame.Visible = not mainFrame.Visible
+return
+end
 if gameProcessed then return end
 if input.KeyCode == Enum.KeyCode.KeypadZero then
 isHitboxEnabled = not isHitboxEnabled
