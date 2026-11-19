@@ -32,7 +32,7 @@ if not screenGui.Parent then
 end
 _G.HitboxGui = screenGui
 
--- Khung chính (Tự động co gọn vì đã bỏ killfeed)
+-- Khung chính
 local mainFrame = Instance.new("Frame")
 mainFrame.Name = "MainFrame"
 mainFrame.Size = UDim2.new(0, 260, 0, 142)
@@ -47,7 +47,7 @@ local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = mainFrame
 
--- Hàm hỗ trợ tạo nút bật/tắt (có tùy chọn chừa chỗ cho ô nhập bên phải)
+-- Hàm hỗ trợ tạo nút bật/tắt
 local function createToggleButton(name, text, posY, hasInputRight)
 	local btn = Instance.new("TextButton")
 	btn.Name = name
@@ -90,7 +90,7 @@ end
 local hitboxBtn = createToggleButton("HitboxBtn", "Hitbox NPC: TẮT [Num 0]", 8, true)
 local sizeInput = createRightInput(currentSizeValue, 8, "Size")
 
--- Hàng 2: ESP NPC (Full chiều ngang)
+-- Hàng 2: ESP NPC
 local espBtn = createToggleButton("EspBtn", "ESP NPC: TẮT", 46, false)
 
 -- Hàng 3: Tự động tương tác + Ô nhập giây bên phải
@@ -293,13 +293,15 @@ espBtn.MouseButton1Click:Connect(function()
 end)
 
 interactBtn.MouseButton1Click:Connect(function()
-isInteractEnabled = not isInteractEnabled
-toggleInteract(isInteractEnabled)
+	isInteractEnabled = not isInteractEnabled
+	toggleInteract(isInteractEnabled)
 end)
+
 sizeInput.FocusLost:Connect(function()
+Hãy thận trọng khi sử dụng mã.
 local num = tonumber(sizeInput.Text)
 if num and num > 0 then
-num = math.clamp(num, 1, 200)
+-- Đã loại bỏ giới hạn con số tối đa
 currentSizeValue = num
 HEAD_SIZE = Vector3.new(num, num, num)
 sizeInput.Text = tostring(num)
