@@ -153,17 +153,20 @@ local function levenshtein(s, t)
 local m, n = #s, #t
 if m == 0 then return n elseif n == 0 then return m end
 local prev = {}
-for j = 0, n do prev[j] = j end
+for j = 1, n + 1 do
+rawset(prev, j, j - 1)
+end
 for i = 1, m do
 local curr = {}
-curr[0] = i
+rawset(curr, 1, i)
 for j = 1, n do
 local cost = (s:sub(i, i) == t:sub(j, j)) and 0 or 1
-curr[j] = math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+local val = math.min(curr[j] + 1, prev[j + 1] + 1, prev[j] + cost)
+rawset(curr, j + 1, val)
 end
 prev = curr
 end
-return prev[n]
+return prev[n + 1]
 end
 local function isBlacklisted(name)
 if #blacklistTerms == 0 then return false end
