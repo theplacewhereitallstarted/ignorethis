@@ -3,13 +3,11 @@ local UserInputService = game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
--- 1. Dọn dẹp kết nối & GUI cũ
 for _, connName in ipairs({"HitboxAddedConn", "HitboxRemovedConn", "HitboxKeybind", "CharAddedConn", "FullbrightConn"}) do
 if _G[connName] then _G[connName]:Disconnect() _G[connName] = nil end
 end
 if _G.HitboxGui then _G.HitboxGui:Destroy() _G.HitboxGui = nil end
 if _G.AutoInteractLoop then _G.AutoInteractLoop = false end
--- Trạng thái & Cấu hình
 local state = {
 npcHitbox = false, plrHitbox = false,
 espHighlight = false, espName = false, espHealth = false,
@@ -25,7 +23,6 @@ local waitingForKey = nil
 local keybindButtons = {}
 local blacklistTerms = {}
 local isHitboxCardExpanded = true
--- Bộ nhớ đệm (Cache)
 local trackedModels = {}
 local trackedPrompts = {}
 local originalData = setmetatable({}, { __mode = "k" })
@@ -35,36 +32,92 @@ Brightness = Lighting.Brightness, ClockTime = Lighting.ClockTime,
 FogEnd = Lighting.FogEnd, GlobalShadows = Lighting.GlobalShadows,
 Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient
 }
--- ================= HÀM DỰNG UI RÚT GỌN =================
-local function make(className, props, parent)
-local inst = Instance.new(className)
-for k, v in pairs(props) do inst[k] = v end
-if parent then inst.Parent = parent end
-return inst
+local function addCorner(parent, radius)
+local c = Instance.new("UICorner")
+c.CornerRadius = UDim.new(0, radius)
+c.Parent = parent
+return c
 end
-local screenGui = make("ScreenGui", { Name = "ModularCombatGUI", ResetOnSpawn = false })
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "ModularCombatGUI"
+screenGui.ResetOnSpawn = false
 pcall(function() screenGui.Parent = CoreGui end)
 if not screenGui.Parent then screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui") end
 _G.HitboxGui = screenGui
-local mainFrame = make("Frame", {
-Size = UDim2.new(0, 285, 0, 390), Position = UDim2.new(1, -300, 0.5, -195),
-BackgroundColor3 = Color3.fromRGB(22, 22, 27), BorderSizePixel = 0, Active = true, Draggable = true
-}, screenGui)
-make("UICorner", { CornerRadius = UDim.new(0, 8) }, mainFrame)
--- Thanh Tab
-local tabBar = make("Frame", { Size = UDim2.new(1, -16, 0, 28), Position = UDim2.new(0, 8, 0, 8), BackgroundColor3 = Color3.fromRGB(16, 16, 20), BorderSizePixel = 0 }, mainFrame)
-make("UICorner", { CornerRadius = UDim.new(0, 6) }, tabBar)
-local mainTabBtn = make("TextButton", { Size = UDim2.new(0.5, -4, 1, -4), Position = UDim2.new(0, 2, 0, 2), BackgroundColor3 = Color3.fromRGB(45, 45, 55), TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 12, Text = "Chức năng" }, tabBar)
-make("UICorner", { CornerRadius = UDim.new(0, 5) }, mainTabBtn)
-local keyTabBtn = make("TextButton", { Size = UDim2.new(0.5, -4, 1, -4), Position = UDim2.new(0.5, 2, 0, 2), BackgroundColor3 = Color3.fromRGB(25, 25, 32), TextColor3 = Color3.fromRGB(160, 160, 175), Font = Enum.Font.GothamBold, TextSize = 12, Text = "Keybinds" }, tabBar)
-make("UICorner", { CornerRadius = UDim.new(0, 5) }, keyTabBtn)
-local mainPage = make("Frame", { Size = UDim2.new(1, -16, 1, -64), Position = UDim2.new(0, 8, 0, 42), BackgroundTransparency = 1 }, mainFrame)
-local mainLayout = make("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }, mainPage)
-local keyPage = make("ScrollingFrame", { Size = UDim2.new(1, -16, 1, -64), Position = UDim2.new(0, 8, 0, 42), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(), Visible = false }, mainFrame)
-make("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }, keyPage)
-make("TextLabel", { Size = UDim2.new(1, -16, 0, 16), Position = UDim2.new(0, 8, 1, -20), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(140, 140, 155), Font = Enum.Font.Gotham, TextSize = 10, Text = "Nhấn [Right Ctrl] để Ẩn / Hiện bảng điều khiển" }, mainFrame)
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.new(0, 285, 0, 390)
+mainFrame.Position = UDim2.new(1, -300, 0.5, -195)
+mainFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 27)
+mainFrame.BorderSizePixel = 0
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = screenGui
+addCorner(mainFrame, 8)
+local tabBar = Instance.new("Frame")
+tabBar.Size = UDim2.new(1, -16, 0, 28)
+tabBar.Position = UDim2.new(0, 8, 0, 8)
+tabBar.BackgroundColor3 = Color3.fromRGB(16, 16, 20)
+tabBar.BorderSizePixel = 0
+tabBar.Parent = mainFrame
+addCorner(tabBar, 6)
+local mainTabBtn = Instance.new("TextButton")
+mainTabBtn.Size = UDim2.new(0.5, -4, 1, -4)
+mainTabBtn.Position = UDim2.new(0, 2, 0, 2)
+mainTabBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 55)
+mainTabBtn.TextColor3 = Color3.new(1, 1, 1)
+mainTabBtn.Font = Enum.Font.GothamBold
+mainTabBtn.TextSize = 12
+mainTabBtn.Text = "Chức năng"
+mainTabBtn.Parent = tabBar
+addCorner(mainTabBtn, 5)
+local keyTabBtn = Instance.new("TextButton")
+keyTabBtn.Size = UDim2.new(0.5, -4, 1, -4)
+keyTabBtn.Position = UDim2.new(0.5, 2, 0, 2)
+keyTabBtn.BackgroundColor3 = Color3.fromRGB(25, 25, 32)
+keyTabBtn.TextColor3 = Color3.fromRGB(160, 160, 175)
+keyTabBtn.Font = Enum.Font.GothamBold
+keyTabBtn.TextSize = 12
+keyTabBtn.Text = "Keybinds"
+keyTabBtn.Parent = tabBar
+addCorner(keyTabBtn, 5)
+local mainPage = Instance.new("Frame")
+mainPage.Size = UDim2.new(1, -16, 1, -64)
+mainPage.Position = UDim2.new(0, 8, 0, 42)
+mainPage.BackgroundTransparency = 1
+mainPage.Parent = mainFrame
+local mainLayout = Instance.new("UIListLayout")
+mainLayout.Padding = UDim.new(0, 6)
+mainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+mainLayout.Parent = mainPage
+local keyPage = Instance.new("ScrollingFrame")
+keyPage.Size = UDim2.new(1, -16, 1, -64)
+keyPage.Position = UDim2.new(0, 8, 0, 42)
+keyPage.BackgroundTransparency = 1
+keyPage.BorderSizePixel = 0
+keyPage.ScrollBarThickness = 3
+keyPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+keyPage.CanvasSize = UDim2.new()
+keyPage.Visible = false
+keyPage.Parent = mainFrame
+local keyLayout = Instance.new("UIListLayout")
+keyLayout.Padding = UDim.new(0, 5)
+keyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+keyLayout.Parent = keyPage
+local hintLbl = Instance.new("TextLabel")
+hintLbl.Size = UDim2.new(1, -16, 0, 16)
+hintLbl.Position = UDim2.new(0, 8, 1, -20)
+hintLbl.BackgroundTransparency = 1
+hintLbl.TextColor3 = Color3.fromRGB(140, 140, 155)
+hintLbl.Font = Enum.Font.Gotham
+hintLbl.TextSize = 10
+hintLbl.Text = "Nhấn [Right Ctrl] để Ẩn / Hiện bảng điều khiển"
+hintLbl.Parent = mainFrame
 local function updateMainFrameHeight()
-mainFrame.Size = mainPage.Visible and UDim2.new(0, 285, 0, mainLayout.AbsoluteContentSize.Y + 68) or UDim2.new(0, 285, 0, 360)
+if mainPage.Visible then
+mainFrame.Size = UDim2.new(0, 285, 0, mainLayout.AbsoluteContentSize.Y + 68)
+else
+mainFrame.Size = UDim2.new(0, 285, 0, 360)
+end
 end
 mainLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateMainFrameHeight)
 local function switchTab(isMain)
@@ -78,56 +131,163 @@ updateMainFrameHeight()
 end
 mainTabBtn.MouseButton1Click:Connect(function() switchTab(true) end)
 keyTabBtn.MouseButton1Click:Connect(function() switchTab(false) end)
--- Thẻ phụ Hitbox
-local hitboxCard = make("Frame", { LayoutOrder = 1, Size = UDim2.new(1, 0, 0, 126), BackgroundColor3 = Color3.fromRGB(30, 30, 37), BorderSizePixel = 0, ClipsDescendants = true }, mainPage)
-make("UICorner", { CornerRadius = UDim.new(0, 6) }, hitboxCard)
-local cardHeader = make("Frame", { Size = UDim2.new(1, 0, 0, 26), BackgroundColor3 = Color3.fromRGB(38, 38, 47), BorderSizePixel = 0 }, hitboxCard)
-make("UICorner", { CornerRadius = UDim.new(0, 6) }, cardHeader)
-make("TextLabel", { Size = UDim2.new(1, -34, 1, 0), Position = UDim2.new(0, 8, 0, 0), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(220, 220, 235), Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, Text = "Cấu hình Hitbox (NPCs & Players)" }, cardHeader)
-local minMaxBtn = make("TextButton", { Size = UDim2.new(0, 22, 0, 20), Position = UDim2.new(1, -25, 0, 3), BackgroundColor3 = Color3.fromRGB(55, 55, 68), TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 13, Text = "-" }, cardHeader)
-make("UICorner", { CornerRadius = UDim.new(0, 4) }, minMaxBtn)
+local hitboxCard = Instance.new("Frame")
+hitboxCard.LayoutOrder = 1
+hitboxCard.Size = UDim2.new(1, 0, 0, 126)
+hitboxCard.BackgroundColor3 = Color3.fromRGB(30, 30, 37)
+hitboxCard.BorderSizePixel = 0
+hitboxCard.ClipsDescendants = true
+hitboxCard.Parent = mainPage
+addCorner(hitboxCard, 6)
+local cardHeader = Instance.new("Frame")
+cardHeader.Size = UDim2.new(1, 0, 0, 26)
+cardHeader.BackgroundColor3 = Color3.fromRGB(38, 38, 47)
+cardHeader.BorderSizePixel = 0
+cardHeader.Parent = hitboxCard
+addCorner(cardHeader, 6)
+local cardTitle = Instance.new("TextLabel")
+cardTitle.Size = UDim2.new(1, -34, 1, 0)
+cardTitle.Position = UDim2.new(0, 8, 0, 0)
+cardTitle.BackgroundTransparency = 1
+cardTitle.TextColor3 = Color3.fromRGB(220, 220, 235)
+cardTitle.Font = Enum.Font.GothamBold
+cardTitle.TextSize = 11
+cardTitle.TextXAlignment = Enum.TextXAlignment.Left
+cardTitle.Text = "Cấu hình Hitbox (NPCs & Players)"
+cardTitle.Parent = cardHeader
+local minMaxBtn = Instance.new("TextButton")
+minMaxBtn.Size = UDim2.new(0, 22, 0, 20)
+minMaxBtn.Position = UDim2.new(1, -25, 0, 3)
+minMaxBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 68)
+minMaxBtn.TextColor3 = Color3.new(1, 1, 1)
+minMaxBtn.Font = Enum.Font.GothamBold
+minMaxBtn.TextSize = 13
+minMaxBtn.Text = "-"
+minMaxBtn.Parent = cardHeader
+addCorner(minMaxBtn, 4)
 minMaxBtn.MouseButton1Click:Connect(function()
 isHitboxCardExpanded = not isHitboxCardExpanded
 hitboxCard.Size = isHitboxCardExpanded and UDim2.new(1, 0, 0, 126) or UDim2.new(1, 0, 0, 26)
 minMaxBtn.Text = isHitboxCardExpanded and "-" or "+"
 updateMainFrameHeight()
 end)
-local filterInput = make("TextBox", { Size = UDim2.new(1, -12, 0, 24), Position = UDim2.new(0, 6, 0, 30), BackgroundColor3 = Color3.fromRGB(20, 20, 25), TextColor3 = Color3.new(1, 1, 1), PlaceholderColor3 = Color3.fromRGB(130, 130, 145), PlaceholderText = "Lọc bỏ tên (VD: shop, quest, guard)...", Text = "", Font = Enum.Font.Gotham, TextSize = 11, ClearTextOnFocus = false }, hitboxCard)
-make("UICorner", { CornerRadius = UDim.new(0, 5) }, filterInput)
+local filterInput = Instance.new("TextBox")
+filterInput.Size = UDim2.new(1, -12, 0, 24)
+filterInput.Position = UDim2.new(0, 6, 0, 30)
+filterInput.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+filterInput.TextColor3 = Color3.new(1, 1, 1)
+filterInput.PlaceholderColor3 = Color3.fromRGB(130, 130, 145)
+filterInput.PlaceholderText = "Lọc bỏ tên (VD: shop, quest, guard)..."
+filterInput.Text = ""
+filterInput.Font = Enum.Font.Gotham
+filterInput.TextSize = 11
+filterInput.ClearTextOnFocus = false
+filterInput.Parent = hitboxCard
+addCorner(filterInput, 5)
 local function createHitboxSubRow(labelPrefix, defSize, defTrans, posY)
-local row = make("Frame", { Size = UDim2.new(1, -12, 0, 28), Position = UDim2.new(0, 6, 0, posY), BackgroundTransparency = 1 }, hitboxCard)
-local btn = make("TextButton", { Size = UDim2.new(1, -98, 1, 0), BackgroundColor3 = Color3.fromRGB(180, 50, 50), TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 11, Text = labelPrefix .. ": TẮT" }, row)
-make("UICorner", { CornerRadius = UDim.new(0, 5) }, btn)
-local sBox = make("TextBox", { Size = UDim2.new(0, 44, 1, 0), Position = UDim2.new(1, -92, 0, 0), BackgroundColor3 = Color3.fromRGB(42, 42, 52), TextColor3 = Color3.new(1, 1, 1), PlaceholderText = "Size", Text = tostring(defSize), Font = Enum.Font.GothamBold, TextSize = 11, ClearTextOnFocus = false }, row)
-make("UICorner", { CornerRadius = UDim.new(0, 5) }, sBox)
-local tBox = make("TextBox", { Size = UDim2.new(0, 44, 1, 0), Position = UDim2.new(1, -44, 0, 0), BackgroundColor3 = Color3.fromRGB(42, 42, 52), TextColor3 = Color3.new(1, 1, 1), PlaceholderText = "Trans", Text = tostring(defTrans), Font = Enum.Font.GothamBold, TextSize = 11, ClearTextOnFocus = false }, row)
-make("UICorner", { CornerRadius = UDim.new(0, 5) }, tBox)
+local row = Instance.new("Frame")
+row.Size = UDim2.new(1, -12, 0, 28)
+row.Position = UDim2.new(0, 6, 0, posY)
+row.BackgroundTransparency = 1
+row.Parent = hitboxCard
+local btn = Instance.new("TextButton")
+btn.Size = UDim2.new(1, -98, 1, 0)
+btn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+btn.TextColor3 = Color3.new(1, 1, 1)
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 11
+btn.Text = labelPrefix .. ": TẮT"
+btn.Parent = row
+addCorner(btn, 5)
+local sBox = Instance.new("TextBox")
+sBox.Size = UDim2.new(0, 44, 1, 0)
+sBox.Position = UDim2.new(1, -92, 0, 0)
+sBox.BackgroundColor3 = Color3.fromRGB(42, 42, 52)
+sBox.TextColor3 = Color3.new(1, 1, 1)
+sBox.PlaceholderText = "Size"
+sBox.Text = tostring(defSize)
+sBox.Font = Enum.Font.GothamBold
+sBox.TextSize = 11
+sBox.ClearTextOnFocus = false
+sBox.Parent = row
+addCorner(sBox, 5)
+local tBox = Instance.new("TextBox")
+tBox.Size = UDim2.new(0, 44, 1, 0)
+tBox.Position = UDim2.new(1, -44, 0, 0)
+tBox.BackgroundColor3 = Color3.fromRGB(42, 42, 52)
+tBox.TextColor3 = Color3.new(1, 1, 1)
+tBox.PlaceholderText = "Trans"
+tBox.Text = tostring(defTrans)
+tBox.Font = Enum.Font.GothamBold
+tBox.TextSize = 11
+tBox.ClearTextOnFocus = false
+tBox.Parent = row
+addCorner(tBox, 5)
 return btn, sBox, tBox
 end
 local npcHbBtn, npcSizeInput, npcTransInput = createHitboxSubRow("Hitbox NPCs", config.npcSize, config.npcTrans, 60)
 local plrHbBtn, plrSizeInput, plrTransInput = createHitboxSubRow("Hitbox Players", config.plrSize, config.plrTrans, 92)
 local function createStandardRow(order, text, hasInput, defVal, placeholder)
-local row = make("Frame", { LayoutOrder = order, Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1 }, mainPage)
-local btn = make("TextButton", { Size = hasInput and UDim2.new(1, -58, 1, 0) or UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(180, 50, 50), TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 12, Text = text }, row)
-make("UICorner", { CornerRadius = UDim.new(0, 6) }, btn)
+local row = Instance.new("Frame")
+row.LayoutOrder = order
+row.Size = UDim2.new(1, 0, 0, 30)
+row.BackgroundTransparency = 1
+row.Parent = mainPage
+local btn = Instance.new("TextButton")
+btn.Size = hasInput and UDim2.new(1, -58, 1, 0) or UDim2.new(1, 0, 1, 0)
+btn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+btn.TextColor3 = Color3.new(1, 1, 1)
+btn.Font = Enum.Font.GothamBold
+btn.TextSize = 12
+btn.Text = text
+btn.Parent = row
+addCorner(btn, 6)
 local box = nil
 if hasInput then
-box = make("TextBox", { Size = UDim2.new(0, 52, 1, 0), Position = UDim2.new(1, -52, 0, 0), BackgroundColor3 = Color3.fromRGB(38, 38, 46), TextColor3 = Color3.new(1, 1, 1), PlaceholderText = placeholder, Text = tostring(defVal), Font = Enum.Font.GothamBold, TextSize = 12, ClearTextOnFocus = false }, row)
-make("UICorner", { CornerRadius = UDim.new(0, 6) }, box)
+box = Instance.new("TextBox")
+box.Size = UDim2.new(0, 52, 1, 0)
+box.Position = UDim2.new(1, -52, 0, 0)
+box.BackgroundColor3 = Color3.fromRGB(38, 38, 46)
+box.TextColor3 = Color3.new(1, 1, 1)
+box.PlaceholderText = placeholder
+box.Text = tostring(defVal)
+box.Font = Enum.Font.GothamBold
+box.TextSize = 12
+box.ClearTextOnFocus = false
+box.Parent = row
+addCorner(box, 6)
 end
 return btn, box
 end
 local espHighlightBtn = createStandardRow(2, "ESP Viền (Highlight): TẮT", false)
-local espSplitRow = make("Frame", { LayoutOrder = 3, Size = UDim2.new(1, 0, 0, 30), BackgroundTransparency = 1 }, mainPage)
-local espNameBtn = make("TextButton", { Size = UDim2.new(0.5, -3, 1, 0), BackgroundColor3 = Color3.fromRGB(180, 50, 50), TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 11, Text = "ESP Tên: TẮT" }, espSplitRow)
-make("UICorner", { CornerRadius = UDim.new(0, 6) }, espNameBtn)
-local espHealthBtn = make("TextButton", { Size = UDim2.new(0.5, -3, 1, 0), Position = UDim2.new(0.5, 3, 0, 0), BackgroundColor3 = Color3.fromRGB(180, 50, 50), TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 11, Text = "ESP Máu: TẮT" }, espSplitRow)
-make("UICorner", { CornerRadius = UDim.new(0, 6) }, espHealthBtn)
+local espSplitRow = Instance.new("Frame")
+espSplitRow.LayoutOrder = 3
+espSplitRow.Size = UDim2.new(1, 0, 0, 30)
+espSplitRow.BackgroundTransparency = 1
+espSplitRow.Parent = mainPage
+local espNameBtn = Instance.new("TextButton")
+espNameBtn.Size = UDim2.new(0.5, -3, 1, 0)
+espNameBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+espNameBtn.TextColor3 = Color3.new(1, 1, 1)
+espNameBtn.Font = Enum.Font.GothamBold
+espNameBtn.TextSize = 11
+espNameBtn.Text = "ESP Tên: TẮT"
+espNameBtn.Parent = espSplitRow
+addCorner(espNameBtn, 6)
+local espHealthBtn = Instance.new("TextButton")
+espHealthBtn.Size = UDim2.new(0.5, -3, 1, 0)
+espHealthBtn.Position = UDim2.new(0.5, 3, 0, 0)
+espHealthBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+espHealthBtn.TextColor3 = Color3.new(1, 1, 1)
+espHealthBtn.Font = Enum.Font.GothamBold
+espHealthBtn.TextSize = 11
+espHealthBtn.Text = "ESP Máu: TẮT"
+espHealthBtn.Parent = espSplitRow
+addCorner(espHealthBtn, 6)
 local interactBtn, delayInput = createStandardRow(4, "Tự động tương tác: TẮT", true, config.interactDelay, "Giây")
 local wsBtn, wsInput = createStandardRow(5, "Tốc độ chạy (WS): TẮT", true, config.ws, "WS")
 local jpBtn, jpInput = createStandardRow(6, "Lực nhảy (JP): TẮT", true, config.jp, "JP")
 local fbBtn = createStandardRow(7, "Sáng bản đồ (Fullbright): TẮT", false)
--- Tab Keybinds
 local keybindDefs = {
 { id = "npcHitbox", label = "Hitbox NPCs" }, { id = "plrHitbox", label = "Hitbox Players" },
 { id = "espHighlight", label = "ESP Viền (Highlight)" }, { id = "espName", label = "ESP Tên" },
@@ -136,11 +296,33 @@ local keybindDefs = {
 { id = "fullbright", label = "Sáng bản đồ" }
 }
 for idx, item in ipairs(keybindDefs) do
-local row = make("Frame", { LayoutOrder = idx, Size = UDim2.new(1, 0, 0, 28), BackgroundColor3 = Color3.fromRGB(30, 30, 37), BorderSizePixel = 0 }, keyPage)
-make("UICorner", { CornerRadius = UDim.new(0, 5) }, row)
-make("TextLabel", { Size = UDim2.new(0.58, -8, 1, 0), Position = UDim2.new(0, 8, 0, 0), BackgroundTransparency = 1, TextColor3 = Color3.fromRGB(220, 220, 230), Font = Enum.Font.GothamSemibold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left, Text = item.label }, row)
-local kBtn = make("TextButton", { Size = UDim2.new(0.42, -6, 0, 22), Position = UDim2.new(0.58, 0, 0, 3), BackgroundColor3 = Color3.fromRGB(45, 45, 56), TextColor3 = Color3.new(1, 1, 1), Font = Enum.Font.GothamBold, TextSize = 11, Text = "Chưa gán" }, row)
-make("UICorner", { CornerRadius = UDim.new(0, 4) }, kBtn)
+local row = Instance.new("Frame")
+row.LayoutOrder = idx
+row.Size = UDim2.new(1, 0, 0, 28)
+row.BackgroundColor3 = Color3.fromRGB(30, 30, 37)
+row.BorderSizePixel = 0
+row.Parent = keyPage
+addCorner(row, 5)
+local lbl = Instance.new("TextLabel")
+lbl.Size = UDim2.new(0.58, -8, 1, 0)
+lbl.Position = UDim2.new(0, 8, 0, 0)
+lbl.BackgroundTransparency = 1
+lbl.TextColor3 = Color3.fromRGB(220, 220, 230)
+lbl.Font = Enum.Font.GothamSemibold
+lbl.TextSize = 11
+lbl.TextXAlignment = Enum.TextXAlignment.Left
+lbl.Text = item.label
+lbl.Parent = row
+local kBtn = Instance.new("TextButton")
+kBtn.Size = UDim2.new(0.42, -6, 0, 22)
+kBtn.Position = UDim2.new(0.58, 0, 0, 3)
+kBtn.BackgroundColor3 = Color3.fromRGB(45, 45, 56)
+kBtn.TextColor3 = Color3.new(1, 1, 1)
+kBtn.Font = Enum.Font.GothamBold
+kBtn.TextSize = 11
+kBtn.Text = "Chưa gán"
+kBtn.Parent = row
+addCorner(kBtn, 4)
 keybindButtons[item.id] = kBtn
 kBtn.MouseButton1Click:Connect(function()
 waitingForKey = item.id
@@ -148,7 +330,6 @@ kBtn.Text = "Nhấn phím..."
 kBtn.BackgroundColor3 = Color3.fromRGB(200, 130, 30)
 end)
 end
--- ================= LOGIC XỬ LÝ TỐI ƯU =================
 local function levenshtein(s, t)
 local m, n = #s, #t
 if m == 0 then return n elseif n == 0 then return m end
@@ -230,7 +411,6 @@ end
 end
 return false
 end
--- ================= HITBOX & ESP =================
 local function restoreHitboxPart(part)
 local saved = originalData[part]
 if saved then
@@ -290,12 +470,13 @@ data.diedConn = hum.Died:Once(function() clearESP(model) end)
 end
 if state.espHighlight then
 if not data.highlight then
-data.highlight = make("Highlight", {
-Name = "NPC_ESP_HL",
-FillTransparency = 1,
-OutlineTransparency = 0,
-DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-}, model)
+local hl = Instance.new("Highlight")
+hl.Name = "NPC_ESP_HL"
+hl.FillTransparency = 1
+hl.OutlineTransparency = 0
+hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+hl.Parent = model
+data.highlight = hl
 end
 data.highlight.OutlineColor = isAlly and Color3.fromRGB(40, 180, 255) or Color3.fromRGB(255, 60, 60)
 elseif data.highlight then
@@ -304,8 +485,23 @@ data.highlight = nil
 end
 if state.espName or state.espHealth then
 if not data.billboard then
-data.billboard = make("BillboardGui", { Name = "NPC_ESP_Tag", Adornee = feetPart, Size = UDim2.new(0, 220, 0, 24), StudsOffset = Vector3.new(0, -3.2, 0), AlwaysOnTop = true }, feetPart)
-data.infoLbl = make("TextLabel", { Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, TextStrokeTransparency = 0.25, TextStrokeColor3 = Color3.new(0, 0, 0), Font = Enum.Font.GothamBold, TextSize = 12 }, data.billboard)
+local bb = Instance.new("BillboardGui")
+bb.Name = "NPC_ESP_Tag"
+bb.Adornee = feetPart
+bb.Size = UDim2.new(0, 220, 0, 24)
+bb.StudsOffset = Vector3.new(0, -3.2, 0)
+bb.AlwaysOnTop = true
+bb.Parent = feetPart
+local lbl = Instance.new("TextLabel")
+lbl.Size = UDim2.new(1, 0, 1, 0)
+lbl.BackgroundTransparency = 1
+lbl.TextStrokeTransparency = 0.25
+lbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+lbl.Font = Enum.Font.GothamBold
+lbl.TextSize = 12
+lbl.Parent = bb
+data.billboard = bb
+data.infoLbl = lbl
 data.conn = hum.HealthChanged:Connect(function(hp)
 if hp <= 0 then clearESP(model) else updateESP(model) end
 end)
@@ -330,7 +526,6 @@ trackedModels[model] = nil
 end
 end
 end
--- ================= QUẢN LÝ BỘ NHỚ ĐỆM & TƯƠNG TÁC =================
 local function registerObject(obj)
 if obj:IsA("Humanoid") and obj.Parent and obj.Parent:IsA("Model") then
 local model = obj.Parent
@@ -377,7 +572,6 @@ task.wait(0.25)
 end
 end
 end)
--- ================= DI CHUYỂN & ÁNH SÁNG =================
 local function applyMovementStats()
 local hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
 if not hum then return end
@@ -401,7 +595,6 @@ else
 for k, v in pairs(origLighting) do Lighting[k] = v end
 end
 end
--- ================= SỰ KIỆN TƯƠNG TÁC UI =================
 local function setBtnStyle(btn, active, label)
 btn.Text = label .. (active and ": BẬT" or ": TẮT")
 btn.BackgroundColor3 = active and Color3.fromRGB(0, 170, 100) or Color3.fromRGB(180, 50, 50)
