@@ -284,13 +284,20 @@ if not espObjects[model] then
 espObjects[model] = data
 data.diedConn = hum.Died:Once(function() clearESP(model) end)
 end
+-- Chỉ hiển thị viền ngoài (FillTransparency = 1) và đổi màu viền theo phe
 if state.espHighlight then
 if not data.highlight then
-data.highlight = make("Highlight", { Name = "NPC_ESP_HL", OutlineColor = Color3.new(1, 1, 1), FillTransparency = 0.65, OutlineTransparency = 0.2, DepthMode = Enum.HighlightDepthMode.AlwaysOnTop }, model)
+data.highlight = make("Highlight", {
+Name = "NPC_ESP_HL",
+FillTransparency = 1,
+OutlineTransparency = 0,
+DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+}, model)
 end
-data.highlight.FillColor = isAlly and Color3.fromRGB(40, 180, 255) or Color3.fromRGB(255, 60, 60)
+data.highlight.OutlineColor = isAlly and Color3.fromRGB(40, 180, 255) or Color3.fromRGB(255, 60, 60)
 elseif data.highlight then
-data.highlight:Destroy() data.highlight = nil
+data.highlight:Destroy()
+data.highlight = nil
 end
 if state.espName or state.espHealth then
 if not data.billboard then
