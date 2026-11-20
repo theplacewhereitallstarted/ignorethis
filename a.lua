@@ -298,10 +298,8 @@ interactBtn.MouseButton1Click:Connect(function()
 end)
 
 sizeInput.FocusLost:Connect(function()
-Hãy thận trọng khi sử dụng mã.
 local num = tonumber(sizeInput.Text)
 if num and num > 0 then
--- Đã loại bỏ giới hạn con số tối đa
 currentSizeValue = num
 HEAD_SIZE = Vector3.new(num, num, num)
 sizeInput.Text = tostring(num)
