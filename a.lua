@@ -152,10 +152,10 @@ end
 local function levenshtein(s, t)
 local m, n = #s, #t
 if m == 0 then return n elseif n == 0 then return m end
-local prev, curr = {}, {}
+local prev = {}
 for j = 0, n do prev[j] = j end
 for i = 1, m do
-curr = table.create(n, 0)
+local curr = {}
 curr[0] = i
 for j = 1, n do
 local cost = (s:sub(i, i) == t:sub(j, j)) and 0 or 1
@@ -445,8 +445,7 @@ bindNumBox(jpInput, "jp", 0.1, nil, function() if state.jp then applyMovementSta
 filterInput.FocusLost:Connect(function()
 blacklistTerms = {}
 for part in string.gmatch(filterInput.Text, "([^,]+)") do
-local trimmed = string.gsub(part, "^%s+", "")
-trimmed = string.gsub(trimmed, "%s+$", "")
+local trimmed = string.gsub(part, "%s+", "")
 if trimmed ~= "" then table.insert(blacklistTerms, string.lower(trimmed)) end
 end
 refreshCachedModels(true, false)
