@@ -1,19 +1,21 @@
 local Players = game:GetService("Players");
 local UserInputService = game:GetService("UserInputService");
 local Lighting = game:GetService("Lighting");
-local CoreGui = game:GetService("CoreGui");
 local LocalPlayer = Players.LocalPlayer;
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui");
 for _, connName in ipairs({"HitboxAddedConn", "HitboxRemovedConn", "HitboxKeybind", "CharAddedConn", "FullbrightConn"}) do
-if _G[connName] then
-pcall(function() _G[connName]:Disconnect(); end);
-_G[connName] = nil;
+local oldConn = rawget(_G, connName);
+if oldConn then
+pcall(function() oldConn:Disconnect(); end);
+rawset(_G, connName, nil);
 end;
 end;
-if _G.HitboxGui then
-pcall(function() _G.HitboxGui:Destroy(); end);
-_G.HitboxGui = nil;
+local oldGui = PlayerGui:FindFirstChild("ModularCombatGUI") or rawget(_G, "HitboxGui");
+if oldGui then
+pcall(function() oldGui:Destroy(); end);
+rawset(_G, "HitboxGui", nil);
 end;
-_G.AutoInteractLoop = false;
+rawset(_G, "AutoInteractLoop", false);
 local state = {
 npcHitbox = false,
 plrHitbox = false,
@@ -60,13 +62,10 @@ end;
 local screenGui = Instance.new("ScreenGui");
 screenGui.Name = "ModularCombatGUI";
 screenGui.ResetOnSpawn = false;
-local okGui = pcall(function()
-screenGui.Parent = CoreGui;
-end);
-if not okGui or not screenGui.Parent then
-screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui");
-end;
-_G.HitboxGui = screenGui;
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling;
+screenGui.DisplayOrder = 999999;
+screenGui.Parent = PlayerGui;
+rawset(_G, "HitboxGui", screenGui);
 local mainFrame = Instance.new("Frame");
 mainFrame.Size = UDim2.new(0, 285, 0, 390);
 mainFrame.Position = UDim2.new(1, -300, 0.5, -195);
@@ -350,7 +349,7 @@ kBtn.TextSize = 11;
 kBtn.Text = "Chưa gán";
 kBtn.Parent = row;
 addCorner(kBtn, 4);
-keybindButtons[item.id] = kBtn;
+rawset(keybindButtons, item.id, kBtn);
 kBtn.MouseButton1Click:Connect(function()
 waitingForKey = item.id;
 kBtn.Text = "Nhấn phím...";
@@ -363,19 +362,21 @@ if m == 0 then return n; end;
 if n == 0 then return m; end;
 local prev = {};
 for j = 1, n + 1 do
-prev[j] = j - 1;
+rawset(prev, j, j - 1);
 end;
 for i = 1, m do
 local curr = {};
-table.insert(curr, i);
+rawset(curr, 1, i);
 for j = 1, n do
 local cost = (s:sub(i, i) == t:sub(j, j)) and 0 or 1;
-local val = math.min(curr[j] + 1, prev[j + 1] + 1, prev[j] + cost);
-table.insert(curr, val);
+local v1 = rawget(curr, j) + 1;
+local v2 = rawget(prev, j + 1) + 1;
+local v3 = rawget(prev, j) + cost;
+rawset(curr, j + 1, math.min(v1, v2, v3));
 end;
 prev = curr;
 end;
-return prev[n + 1];
+return rawget(prev, n + 1);
 end;
 local function isBlacklisted(name)
 if #blacklistTerms == 0 then return false; end;
@@ -443,7 +444,7 @@ end;
 return false;
 end;
 local function restoreHitboxPart(part)
-local saved = originalData[part];
+local saved = rawget(originalData, part);
 if saved then
 part.Size = saved.Size;
 part.Material = saved.Material;
@@ -451,7 +452,7 @@ part.BrickColor = saved.BrickColor;
 part.Transparency = saved.Transparency;
 part.CanCollide = saved.CanCollide;
 part.Massless = saved.Massless;
-originalData[part] = nil;
+rawset(originalData, part, nil);
 end;
 end;
 local function applyHitbox(model)
@@ -480,15 +481,15 @@ trans = config.npcTrans;
 color = BrickColor.new("Really blue");
 end;
 if apply then
-if not originalData[part] then
-originalData[part] = {
+if not rawget(originalData, part) then
+rawset(originalData, part, {
 Size = part.Size,
 Material = part.Material,
 BrickColor = part.BrickColor,
 Transparency = part.Transparency,
 CanCollide = part.CanCollide,
 Massless = part.Massless
-};
+});
 hum.Died:Once(function()
 restoreHitboxPart(part);
 end);
@@ -504,13 +505,13 @@ restoreHitboxPart(part);
 end;
 end;
 local function clearESP(model)
-local data = espObjects[model];
+local data = rawget(espObjects, model);
 if data then
 if data.conn then data.conn:Disconnect(); end;
 if data.diedConn then data.diedConn:Disconnect(); end;
 if data.highlight then data.highlight:Destroy(); end;
 if data.billboard then data.billboard:Destroy(); end;
-espObjects[model] = nil;
+rawset(espObjects, model, nil);
 end;
 end;
 local function updateESP(model)
@@ -530,10 +531,10 @@ clearESP(model);
 return;
 end;
 local isAlly = isPlayerCompanion(model);
-local data = espObjects[model];
+local data = rawget(espObjects, model);
 if not data then
 data = {};
-espObjects[model] = data;
+rawset(espObjects, model, data);
 data.diedConn = hum.Died:Once(function()
 clearESP(model);
 end);
@@ -598,14 +599,14 @@ if model and model.Parent then
 if doHitbox then applyHitbox(model); end;
 if doEsp then updateESP(model); end;
 else
-trackedModels[model] = nil;
+rawset(trackedModels, model, nil);
 end;
 end;
 end;
 local function registerObject(obj)
 if obj:IsA("Humanoid") and obj.Parent and obj.Parent:IsA("Model") then
 local model = obj.Parent;
-trackedModels[model] = true;
+rawset(trackedModels, model, true);
 if state.npcHitbox or state.plrHitbox or state.espHighlight or state.espName or state.espHealth then
 task.delay(0.35, function()
 if model and model.Parent then
@@ -615,25 +616,25 @@ end;
 end);
 end;
 elseif obj:IsA("ProximityPrompt") then
-trackedPrompts[obj] = true;
+rawset(trackedPrompts, obj, true);
 end;
 end;
 for _, obj in ipairs(workspace:GetDescendants()) do
 registerObject(obj);
 end;
-_G.HitboxAddedConn = workspace.DescendantAdded:Connect(registerObject);
-_G.HitboxRemovedConn = workspace.DescendantRemoving:Connect(function(obj)
+rawset(_G, "HitboxAddedConn", workspace.DescendantAdded:Connect(registerObject));
+rawset(_G, "HitboxRemovedConn", workspace.DescendantRemoving:Connect(function(obj)
 if obj:IsA("Model") then
-trackedModels[obj] = nil;
+rawset(trackedModels, obj, nil);
 clearESP(obj);
 elseif obj:IsA("ProximityPrompt") then
-trackedPrompts[obj] = nil;
+rawset(trackedPrompts, obj, nil);
 end;
-end);
-_G.AutoInteractLoop = true;
+end));
+rawset(_G, "AutoInteractLoop", true);
 task.spawn(function()
 local firePromptFn = (type(fireproximityprompt) == "function") and fireproximityprompt or nil;
-while _G.AutoInteractLoop do
+while rawget(_G, "AutoInteractLoop") do
 if state.interact then
 local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart");
 if root then
@@ -650,7 +651,7 @@ prompt:InputHoldEnd();
 end;
 end;
 elseif not prompt or not prompt.Parent then
-trackedPrompts[prompt] = nil;
+rawset(trackedPrompts, prompt, nil);
 end;
 end;
 end;
@@ -671,17 +672,18 @@ else
 hum.JumpPower = 50;
 end;
 end;
-_G.CharAddedConn = LocalPlayer.CharacterAdded:Connect(function(char)
+rawset(_G, "CharAddedConn", LocalPlayer.CharacterAdded:Connect(function(char)
 local hum = char:WaitForChild("Humanoid", 5);
 if hum then
 task.wait(0.1);
 applyMovementStats();
 end;
-end);
+end));
 local function applyFullbright()
-if _G.FullbrightConn then
-_G.FullbrightConn:Disconnect();
-_G.FullbrightConn = nil;
+local oldFb = rawget(_G, "FullbrightConn");
+if oldFb then
+oldFb:Disconnect();
+rawset(_G, "FullbrightConn", nil);
 end;
 if state.fullbright then
 local function setBright()
@@ -693,7 +695,7 @@ Lighting.Ambient = Color3.fromRGB(178, 178, 178);
 Lighting.OutdoorAmbient = Color3.fromRGB(178, 178, 178);
 end;
 setBright();
-_G.FullbrightConn = Lighting.LightingChanged:Connect(setBright);
+rawset(_G, "FullbrightConn", Lighting.LightingChanged:Connect(setBright));
 else
 for k, v in pairs(origLighting) do
 Lighting[k] = v;
@@ -763,11 +765,11 @@ local function bindNumBox(box, cfgKey, minVal, maxVal, callback)
 box.FocusLost:Connect(function()
 local num = tonumber(box.Text);
 if num and (not minVal or num >= minVal) and (not maxVal or num <= maxVal) then
-config[cfgKey] = num;
+rawset(config, cfgKey, num);
 box.Text = tostring(num);
 if callback then callback(); end;
 else
-box.Text = tostring(config[cfgKey]);
+box.Text = tostring(rawget(config, cfgKey));
 end;
 end);
 end;
@@ -788,19 +790,20 @@ end;
 end;
 refreshCachedModels(true, false);
 end);
-_G.HitboxKeybind = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+rawset(_G, "HitboxKeybind", UserInputService.InputBegan:Connect(function(input, gameProcessed)
 if input.UserInputType ~= Enum.UserInputType.Keyboard then return; end;
 if waitingForKey then
-local id, btn = waitingForKey, keybindButtons[waitingForKey];
+local id = waitingForKey;
+local btn = rawget(keybindButtons, id);
 waitingForKey = nil;
 if input.KeyCode == Enum.KeyCode.Backspace or input.KeyCode == Enum.KeyCode.Escape then
-keybinds[id] = nil;
+rawset(keybinds, id, nil);
 if btn then
 btn.Text = "Chưa gán";
 btn.BackgroundColor3 = Color3.fromRGB(45, 45, 56);
 end;
 else
-keybinds[id] = input.KeyCode;
+rawset(keybinds, id, input.KeyCode);
 if btn then
 btn.Text = input.KeyCode.Name;
 btn.BackgroundColor3 = Color3.fromRGB(0, 130, 190);
@@ -814,8 +817,9 @@ return;
 end;
 if gameProcessed then return; end;
 for id, boundKey in pairs(keybinds) do
-if boundKey and input.KeyCode == boundKey and actions[id] then
-actionsid;
+local actionFn = rawget(actions, id);
+if boundKey and input.KeyCode == boundKey and actionFn then
+actionFn();
 end;
 end;
-end);
+end));
