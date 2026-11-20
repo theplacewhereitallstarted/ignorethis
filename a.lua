@@ -25,7 +25,7 @@ local waitingForKey = nil
 local keybindButtons = {}
 local blacklistTerms = {}
 local isHitboxCardExpanded = true
--- Bộ nhớ đệm (Cache) giúp loại bỏ lag khi quét workspace
+-- Bộ nhớ đệm (Cache)
 local trackedModels = {}
 local trackedPrompts = {}
 local originalData = setmetatable({}, { __mode = "k" })
@@ -155,12 +155,13 @@ if m == 0 then return n elseif n == 0 then return m end
 local prev, curr = {}, {}
 for j = 0, n do prev[j] = j end
 for i = 1, m do
+curr = table.create(n, 0)
 curr[0] = i
 for j = 1, n do
 local cost = (s:sub(i, i) == t:sub(j, j)) and 0 or 1
 curr[j] = math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
 end
-prev, curr = curr, prev
+prev = curr
 end
 return prev[n]
 end
@@ -284,7 +285,6 @@ if not espObjects[model] then
 espObjects[model] = data
 data.diedConn = hum.Died:Once(function() clearESP(model) end)
 end
--- Chỉ hiển thị viền ngoài (FillTransparency = 1) và đổi màu viền theo phe
 if state.espHighlight then
 if not data.highlight then
 data.highlight = make("Highlight", {
@@ -445,8 +445,9 @@ bindNumBox(jpInput, "jp", 0.1, nil, function() if state.jp then applyMovementSta
 filterInput.FocusLost:Connect(function()
 blacklistTerms = {}
 for part in string.gmatch(filterInput.Text, "([^,]+)") do
-local trimmed = part:match("^%s*(.-)%s*$")
-if trimmed and trimmed ~= "" then table.insert(blacklistTerms, string.lower(trimmed)) end
+local trimmed = string.gsub(part, "^%s+", "")
+trimmed = string.gsub(trimmed, "%s+$", "")
+if trimmed ~= "" then table.insert(blacklistTerms, string.lower(trimmed)) end
 end
 refreshCachedModels(true, false)
 end)
